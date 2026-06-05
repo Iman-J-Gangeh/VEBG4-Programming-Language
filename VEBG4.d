@@ -255,8 +255,8 @@ Value interp (ExprC expr, Env env) {
     if (auto id = cast(IdC) expr) {
         return lookup(id.sym, env);
     }
-    if (auto closure = cast(lamC) expr) {
-        return new CloV(params, body, env);
+    if (auto closure = cast(LamC) expr) {
+        return new CloV(closure.params, closure.body, env);
     }
     if (auto ifs = cast(IfC) expr) {
         auto boolVal = interp(ifs.condition, env);
@@ -265,10 +265,10 @@ Value interp (ExprC expr, Env env) {
             if (cond.val) {
                 return interp(ifs.trueBranch, env);
             } else {
-                return interp(ifs.falsebranch, env);
+                return interp(ifs.falseBranch, env);
             }
         } else {
-            throw new Exception("VEBG: if condition expected a boolean got " ~ serialize(boolV));
+            throw new Exception("VEBG: if condition expected a boolean got " ~ serialize(boolVal));
         }
     }
     if (auto app = cast(AppC) expr) {
@@ -283,8 +283,25 @@ Value interp (ExprC expr, Env env) {
             return prim.body(argVals);
         }
 
+        if (auto clov = cast(CloV) fVal) {
+            Env new_env = extendEnvMultiple(clov.params, argVals, clo.env);
+            return interp(clo.body, new_env);
+        }
+
         throw new Exception("VEBG: expected a primitive function");
     }
+
+    class CloV : Value {
+    string[] params;
+    ExprC body;
+    Bind[] env;
+
+    this(string[] params, ExprC body, Bind[] env) {
+        this.params = params;
+        this.body = body;
+        this.env = env;
+    }
+}
 
     throw new Exception("VEBG: unknown expression");
 }
