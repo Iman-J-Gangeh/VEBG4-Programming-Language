@@ -1,5 +1,6 @@
 import std.stdio;
 import std.conv;
+import std.string;
 
 abstract class ExprC {}
 
@@ -178,6 +179,34 @@ NumV expectedNum(Value v, string opName) {
     return n;
 }
 
+// HELPER FUNCTION: checks that a Value is StrV and returns it
+StrV expectedStr(Value v, string opName) {
+    auto s = cast(StrV) v;
+ 
+    if (s is null) {
+        throw new Exception("VEBG: " ~ opName ~ " expected a string, got " ~ serialize(v));
+    }
+ 
+    return s;
+}
+ 
+// HELPER FUNCTION: checks that a Value is a non-negative integer (natural number) and returns it
+long expectedNatural(Value v, string opName) {
+    auto n = cast(NumV) v;
+ 
+    if (n is null) {
+        throw new Exception("VEBG: " ~ opName ~ " expected a natural number, got " ~ serialize(v));
+    }
+ 
+    double d = n.val;
+ 
+    if (d < 0 || d != cast(long) d) {
+        throw new Exception("VEBG: " ~ opName ~ " expected a natural number, got " ~ serialize(v));
+    }
+ 
+    return cast(long) d;
+}
+ 
 // HELPER FUNCTIONS for binop
 double add(double a, double b) {
     return a + b;
@@ -228,6 +257,140 @@ Value divOp(Value[] args) {
     return new NumV(a.val / b.val);
 }
 
+// returns true if a <= b, errors if either is not a number
+Value leqOp(Value[] args) {
+    if (args.length != 2) {
+        throw new Exception("VEBG: <= expected two arguments");
+    }
+ 
+    auto a = expectedNum(args[0], "<=");
+    auto b = expectedNum(args[1], "<=");
+ 
+    return new BoolV(a.val <= b.val);
+}
+ 
+// returns a substring from start up to (not including) stop
+Value substringOp(Value[] args) {
+    if (args.length != 3) {
+        throw new Exception("VEBG: substring expected three arguments");
+    }
+ 
+    auto s     = expectedStr(args[0], "substring");
+    long start = expectedNatural(args[1], "substring");
+    long stop  = expectedNatural(args[2], "substring");
+ 
+    if (start > stop || stop > cast(long) s.str.length) {
+        throw new Exception("VEBG: substring index out of range");
+    }
+ 
+    return new StrV(s.str[cast(size_t) start .. cast(size_t) stop]);
+}
+ 
+// returns the length of a string as a NumV
+Value strlenOp(Value[] args) {
+    if (args.length != 1) {
+        throw new Exception("VEBG: strlen expected one argument");
+    }
+ 
+    auto s = expectedStr(args[0], "strlen");
+ 
+    return new NumV(cast(double) s.str.length);
+}
+ 
+// returns true if both values are equal numbers, booleans, or strings;
+// returns false if either is a closure or primop, or if types differ
+Value equalOp(Value[] args) {
+    if (args.length != 2) {
+        throw new Exception("VEBG: equal? expected two arguments");
+    }
+ 
+    Value a = args[0];
+    Value b = args[1];
+ 
+    if (cast(CloV) a || cast(CloV) b) return new BoolV(false);
+    if (cast(PrimV) a || cast(PrimV) b) return new BoolV(false);
+ 
+    if (auto an = cast(NumV) a) {
+        if (auto bn = cast(NumV) b) return new BoolV(an.val == bn.val);
+        return new BoolV(false);
+    }
+    if (auto ab = cast(BoolV) a) {
+        if (auto bb = cast(BoolV) b) return new BoolV(ab.val == bb.val);
+        return new BoolV(false);
+    }
+    if (auto as_ = cast(StrV) a) {
+        if (auto bs = cast(StrV) b) return new BoolV(as_.str == bs.str);
+        return new BoolV(false);
+    }
+ 
+    return new BoolV(false);
+}
+ 
+// halts the program with a user-error containing the serialized value
+Value errorOp(Value[] args) {
+    if (args.length != 1) {
+        throw new Exception("VEBG: error expected one argument");
+    }
+ 
+    throw new Exception("VEBG: user-error " ~ serialize(args[0]));
+}
+ 
+// prints a value to stdout and returns it
+Value printlnOp(Value[] args) {
+    if (args.length != 1) {
+        throw new Exception("VEBG: println expected one argument");
+    }
+ 
+    writeln(serialize(args[0]));
+ 
+    return args[0];
+}
+ 
+// concatenates two strings and returns a StrV
+Value plusplusOp(Value[] args) {
+    if (args.length != 2) {
+        throw new Exception("VEBG: ++ expected two arguments");
+    }
+ 
+    auto a = expectedStr(args[0], "++");
+    auto b = expectedStr(args[1], "++");
+ 
+    return new StrV(a.str ~ b.str);
+}
+ 
+// evaluates both arguments and returns the second, discarding the first
+Value chainOp(Value[] args) {
+    if (args.length != 2) {
+        throw new Exception("VEBG: chain expected two arguments");
+    }
+ 
+    return args[1];
+}
+ 
+// reads a number from stdin and returns a NumV
+Value readnumOp(Value[] args) {
+    if (args.length != 0) {
+        throw new Exception("VEBG: read-num expected no arguments");
+    }
+ 
+    string line = strip(readln());
+ 
+    try {
+        return new NumV(to!double(line));
+    } catch (Exception e) {
+        throw new Exception("VEBG: read-num could not parse input as number");
+    }
+}
+ 
+// reads a line from stdin and returns a StrV
+Value readstrOp(Value[] args) {
+    if (args.length != 0) {
+        throw new Exception("VEBG: read-str expected no arguments");
+    }
+ 
+    return new StrV(strip(readln()));
+}
+ 
 // END OF PRIMITIVES
 
 // creates the starting environment with primitive functions and booleans
@@ -240,7 +403,16 @@ Env topEnv() {
     env ~= new Bind("/", new PrimV("/", &divOp));
     env ~= new Bind("true", new BoolV(true));
     env ~= new Bind("false", new BoolV(false));
-    
+    env ~= new Bind("<=", new PrimV("<=", &leqOp));
+    env ~= new Bind("substring", new PrimV("substring", &substringOp));
+    env ~= new Bind("strlen", new PrimV("strlen", &strlenOp));
+    env ~= new Bind("equal?", new PrimV("equal?", &equalOp));
+    env ~= new Bind("error", new PrimV("error", &errorOp));
+    env ~= new Bind("println", new PrimV("println", &printlnOp));
+    env ~= new Bind("++", new PrimV("++", &plusplusOp));
+    env ~= new Bind("chain", new PrimV("chain", &chainOp));
+    env ~= new Bind("read-num", new PrimV("read-num", &readnumOp));
+    env ~= new Bind("read-str", new PrimV("read-str", &readstrOp));
     return env;
 }
 
@@ -394,6 +566,113 @@ checkEqual(
     "14"
 );
 
+checkEqual(
+        "subtraction",
+        serialize(interp(new AppC(new IdC("-"), [new NumC(10), new NumC(3)]),
+        env)),
+        "7"
+    );
+ 
+    checkEqual(
+        "division",
+        serialize(interp(new AppC(new IdC("/"), [new NumC(10), new NumC(2)]),
+        env)),
+        "5"
+    );
+ 
+    checkEqual(
+        "less than or equal true",
+        serialize(interp(new AppC(new IdC("<="), [new NumC(2), new NumC(3)]),
+        env)),
+        "true"
+    );
+ 
+    checkEqual(
+        "less than or equal false",
+        serialize(interp(new AppC(new IdC("<="), [new NumC(5), new NumC(3)]),
+        env)),
+        "false"
+    );
+ 
+    checkEqual(
+        "strlen",
+        serialize(interp(new AppC(new IdC("strlen"), [new StrC("abc")]),
+        env)),
+        "3"
+    );
+ 
+    checkEqual(
+        "substring",
+        serialize(interp(new AppC(new IdC("substring"), [new StrC("hello"), new NumC(1), new NumC(4)]),
+        env)),
+        "\"ell\""
+    );
+ 
+    checkEqual(
+        "equal? numbers true",
+        serialize(interp(new AppC(new IdC("equal?"), [new NumC(5), new NumC(5)]),
+        env)),
+        "true"
+    );
+ 
+    checkEqual(
+        "equal? numbers false",
+        serialize(interp(new AppC(new IdC("equal?"), [new NumC(5), new NumC(6)]),
+        env)),
+        "false"
+    );
+ 
+    checkEqual(
+        "equal? strings true",
+        serialize(interp(new AppC(new IdC("equal?"), [new StrC("hi"), new StrC("hi")]),
+        env)),
+        "true"
+    );
+ 
+    checkEqual(
+        "equal? closures false",
+        serialize(interp(new AppC(new IdC("equal?"), [
+            new LamC(["x"], new IdC("x")),
+            new LamC(["y"], new IdC("y"))
+        ]), env)),
+        "false"
+    );
+ 
+    checkEqual(
+        "closure serialize",
+        serialize(interp(new LamC(["x"], new IdC("x")), env)),
+        "#<procedure>"
+    );
+ 
+    checkEqual(
+        "primop serialize",
+        serialize(interp(new IdC("+"), env)),
+        "#<primop>"
+    );
+ 
+    checkEqual(
+        "string concat",
+        serialize(interp(new AppC(new IdC("++"), [new StrC("hello"), new StrC(" world")]),
+        env)),
+        "\"hello world\""
+    );
+ 
+    checkEqual(
+        "chain returns second",
+        serialize(interp(new AppC(new IdC("chain"), [new NumC(1), new NumC(2)]),
+        env)),
+        "2"
+    );
+ 
+    checkEqual(
+        "given desugaring",
+        serialize(interp(new AppC(
+            new LamC(["x", "y"], new AppC(new IdC("+"), [new IdC("x"), new IdC("y")])),
+            [new NumC(5), new NumC(3)]),
+        env)),
+        "8"
+    );
+
 checkError("unbound identifier", {
     interp(new IdC("z"), env);
 });
@@ -409,5 +688,33 @@ checkError("if condition not boolean", {
 checkError("wrong number of args", {
     interp(new AppC(new IdC("+"), [new NumC(1)]), env);
 });
+
+checkError("error op", {
+        interp(new AppC(new IdC("error"), [new NumC(5)]), env);
+    });
+ 
+    checkError("strlen non-string", {
+        interp(new AppC(new IdC("strlen"), [new NumC(5)]), env);
+    });
+ 
+    checkError("substring negative index", {
+        interp(new AppC(new IdC("substring"), [new StrC("hello"), new NumC(-1), new NumC(3)]), env);
+    });
+ 
+    checkError("substring out of range", {
+        interp(new AppC(new IdC("substring"), [new StrC("hi"), new NumC(0), new NumC(5)]), env);
+    });
+ 
+    checkError("call non-function", {
+        interp(new AppC(new NumC(5), [new NumC(1)]), env);
+    });
+ 
+    checkError("wrong arity closure", {
+        interp(new AppC(new LamC(["x", "y"], new IdC("x")), [new NumC(1)]), env);
+    });
+ 
+    checkError("+ with non-number", {
+        interp(new AppC(new IdC("+"), [new IdC("true"), new NumC(1)]), env);
+    });
 
 }
