@@ -240,20 +240,7 @@ Env topEnv() {
     env ~= new Bind("/", new PrimV("/", &divOp));
     env ~= new Bind("true", new BoolV(true));
     env ~= new Bind("false", new BoolV(false));
-
-    // primatives not implemented 
-    env ~= new Bind("<=", new PrimV("<=", &leqop));
-    env ~= new Bind("substring", new PrimV("substring", &substringOp));
-    env ~= new Bind("strlen", new PrimV("strlen", &strlenOp));
-    env ~= new Bind("equal?", new PrimV("equal?", &equalOp));
-    env ~= new Bind("error", new PrimV("error", &erroOp));
-    env ~= new Bind("strlen", new PrimV("strlen", &strlenOp));
-    env ~= new Bind("println", new PrimV("println", &printlnOp));
-    env ~= new Bind("++", new PrimV("++", &plusplusOp));
-    env ~= new Bind("chain", new PrimV("chain", &chainOp));
-    env ~= new Bind("read-num", new PrimV("read-num", &readnumOp));
-    env ~= new Bind("read-str", new PrimV("read-str", &readstrOp));
-
+    
     return env;
 }
 
@@ -297,34 +284,130 @@ Value interp (ExprC expr, Env env) {
         }
 
         if (auto clov = cast(CloV) fVal) {
-            Env new_env = extendEnvMultiple(clov.params, argVals, clo.env);
-            return interp(clo.body, new_env);
+            Env new_env = extendEnvMultiple(clov.params, argVals, clov.env);
+            return interp(clov.body, new_env);
         }
 
         throw new Exception("VEBG: expected a primitive function");
     }
 
     throw new Exception("VEBG: unknown expression");
+
+}
+
+void checkEqual(string testName, string actual, string expected) {
+    if (actual == expected) {
+        writeln("PASS: ", testName);
+    } else {
+        writeln("FAIL: ", expected);
+        writeln(" got: ", actual);
+    }
+}
+
+void checkError(string testName, void delegate() thunk) {
+    try {
+        thunk();
+        writeln("FAIL: ", testName);
+        writeln(" expected an error");
+    } catch (Exception e) {
+        writeln("PASS: ", testName);
+    }
 }
 
 void main() {
     Env env = topEnv();
 
-    writeln(serialize(interp(new NumC(5), env)));
-    writeln(serialize(interp(new StrC("lebg4"), env)));
-    writeln(serialize(interp(new IdC("true"), env)));
+checkEqual(
+    "number",
+    serialize(interp(new NumC(5), env)),
+    "5"
+);
 
-    writeln(serialize(interp(
-        new AppC(new IdC("+"), [new NumC(2), new NumC(3)]),
-        env)));
+checkEqual(
+    "string",
+    serialize(interp(new StrC("vebg4"), env)),
+    "\"vebg4\""
+);
 
-    writeln(serialize(interp(
-        new AppC(new IdC("*"), [new NumC(3), new NumC(5)]),
-        env)));
+checkEqual(
+    "true id",
+    serialize(interp (new IdC("true"), env)),
+    "true"
+);
 
-    writeln(serialize(interp(
-        new AppC(new IdC("+"),
-                 [new NumC(2),
-                  new AppC(new IdC("*"), [new NumC(3), new NumC(4)])]),
-        env)));
+checkEqual(
+    "false id",
+    serialize(interp(new IdC("false"), env)),
+    "false"
+);
+
+checkEqual(
+    "addition",
+    serialize(interp(new AppC(new IdC("+"), [new NumC(2), new NumC(3)]),
+    env)),
+    "5"
+);
+
+checkEqual(
+    "multiplication",
+    serialize (interp(new AppC(new IdC("*"), [new NumC(3), new NumC(5)]),
+    env)),
+    "15"
+);
+
+checkEqual(
+    "nested arithmetic",
+    serialize(interp(new AppC(new IdC("+"), [new NumC(2),
+    new AppC(new IdC("*"), [new NumC(3), new NumC(4)])]),
+    env)),
+    "14"
+);
+
+checkEqual(
+    "if true",
+    serialize(interp(new IfC(new IdC("true"), new NumC(1), new NumC(2)),
+    env)),
+    "1"
+);
+
+checkEqual(
+    "if false",
+    serialize(interp (new IfC(new IdC("false"), new NumC(1), new NumC(2)),
+    env)),
+    "2"
+);
+
+checkEqual(
+    "lambda application",
+    serialize(interp(new AppC(new LamC(["x"], new AppC(new IdC("+"), [new IdC("x"), new NumC(1)])),
+    [new NumC(5)]),
+    env)),
+    "6"
+);
+
+checkEqual(
+    "two argument lambda",
+    serialize(interp(new AppC(new LamC(["x", "y"], new AppC(new IdC("+"), [new IdC("x"),
+    new IdC("y")])),
+    [new NumC(10), new NumC(4)]),
+    env)),
+    "14"
+);
+
+checkError("unbound identifier", {
+    interp(new IdC("z"), env);
+});
+
+checkError("divide by zero", {
+    interp(new AppC(new IdC("/"), [new NumC(10), new NumC(0)]), env);
+});
+
+checkError("if condition not boolean", {
+    interp(new IfC(new NumC(5), new NumC(1), new NumC(2)), env);
+});
+
+checkError("wrong number of args", {
+    interp(new AppC(new IdC("+"), [new NumC(1)]), env);
+});
+
 }
