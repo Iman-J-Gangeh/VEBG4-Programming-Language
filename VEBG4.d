@@ -241,6 +241,19 @@ Env topEnv() {
     env ~= new Bind("true", new BoolV(true));
     env ~= new Bind("false", new BoolV(false));
 
+    // primatives not implemented 
+    env ~= new Bind("<=", new PrimV("<=", &leqop));
+    env ~= new Bind("substring", new PrimV("substring", &substringOp));
+    env ~= new Bind("strlen", new PrimV("strlen", &strlenOp));
+    env ~= new Bind("equal?", new PrimV("equal?", &equalOp));
+    env ~= new Bind("error", new PrimV("error", &erroOp));
+    env ~= new Bind("strlen", new PrimV("strlen", &strlenOp));
+    env ~= new Bind("println", new PrimV("println", &printlnOp));
+    env ~= new Bind("++", new PrimV("++", &plusplusOp));
+    env ~= new Bind("chain", new PrimV("chain", &chainOp));
+    env ~= new Bind("read-num", new PrimV("read-num", &readnumOp));
+    env ~= new Bind("read-str", new PrimV("read-str", &readstrOp));
+
     return env;
 }
 
@@ -290,18 +303,6 @@ Value interp (ExprC expr, Env env) {
 
         throw new Exception("VEBG: expected a primitive function");
     }
-
-    class CloV : Value {
-    string[] params;
-    ExprC body;
-    Bind[] env;
-
-    this(string[] params, ExprC body, Bind[] env) {
-        this.params = params;
-        this.body = body;
-        this.env = env;
-    }
-}
 
     throw new Exception("VEBG: unknown expression");
 }
