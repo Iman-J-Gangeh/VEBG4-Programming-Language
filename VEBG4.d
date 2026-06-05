@@ -255,6 +255,22 @@ Value interp (ExprC expr, Env env) {
     if (auto id = cast(IdC) expr) {
         return lookup(id.sym, env);
     }
+    if (auto closure = cast(lamC) expr) {
+        return new CloV(params, body, env);
+    }
+    if (auto ifs = cast(IfC) expr) {
+        auto boolVal = interp(ifs.condition, env);
+
+        if (auto cond = cast(BoolV) boolVal) {
+            if (cond.val) {
+                return interp(ifs.trueBranch, env);
+            } else {
+                return interp(ifs.falsebranch, env);
+            }
+        } else {
+            throw new Exception("VEBG: if condition expected a boolean got " ~ serialize(boolV));
+        }
+    }
     if (auto app = cast(AppC) expr) {
         Value fVal = interp(app.f, env);
 
